@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { PlusCircle, Copy, Loader2, AlertTriangle, Link2, FileText, FileQuestion, Download } from "lucide-react"
+import { useState, useEffect } from "react"
+import { PlusCircle, Copy, Loader2, AlertTriangle, Link2, FileText, FileQuestion, Download, Edit } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -13,9 +13,12 @@ import ReactMarkdown from "react-markdown"
 import { UrlInput } from "@/components/youtube/url-input"
 import { QuestionInput } from "@/components/youtube/question-input"
 import { OutputCustomization, type OutputSettings } from "@/components/youtube/output-customization"
+import { LanguageSelector } from "@/components/youtube/language-selector"
+import { DocumentEditor } from "@/components/youtube/document-editor"
 import { ModelInfo } from "@/components/youtube/model-info"
 import { extractVideoId } from "@/lib/youtube"
 import { generatePDF } from "@/lib/pdf-generator"
+import { generateDOCX } from "@/lib/docx-generator"
 
 export function YouTubeSummarizer() {
   const [urls, setUrls] = useState<string[]>([""])
@@ -43,8 +46,20 @@ export function YouTubeSummarizer() {
     summaryStyle: "academic",
     language: "en",
   })
+  const [editMode, setEditMode] = useState<boolean>(false)
+  const [editedContent, setEditedContent] = useState<string>("")
+  const [feedback, setFeedback] = useState<string>("")
+  const [isExporting, setIsExporting] = useState<boolean>(false)
 
   const { toast } = useToast()
+
+  // Update output settings when language changes
+  useEffect(() => {
+    setOutputSettings((prev) => ({
+      ...prev,
+      language,
+    }))
+  }, [language])
 
   const addUrlField = () => {
     setUrls([...urls, ""])
@@ -78,6 +93,7 @@ export function YouTubeSummarizer() {
     setError("")
     setSummary("")
     setSummaryInfo(null)
+    setEditMode(false)
 
     try {
       const response = await fetch("/api/summarize", {
@@ -91,6 +107,8 @@ export function YouTubeSummarizer() {
             ...outputSettings,
             language,
           },
+          feedback: feedback || undefined,
+          editedContent: editedContent || undefined,
         }),
       })
 
@@ -106,6 +124,12 @@ export function YouTubeSummarizer() {
         videoCount: data.videoCount,
         errorCount: data.errorCount,
       })
+
+      // Reset edited content if this is a fresh generation
+      if (!data.isEdited) {
+        setEditedContent("")
+        setFeedback("")
+      }
 
       // Check if there were any errors
       if (data.errorCount > 0) {
@@ -157,6 +181,7 @@ export function YouTubeSummarizer() {
     setLoading(true)
     setError("")
     setAnalysis("")
+    setEditMode(false)
 
     try {
       const response = await fetch("/api/analyze", {
@@ -172,6 +197,8 @@ export function YouTubeSummarizer() {
             ...outputSettings,
             language,
           },
+          feedback: feedback || undefined,
+          editedContent: editedContent || undefined,
         }),
       })
 
@@ -182,6 +209,12 @@ export function YouTubeSummarizer() {
       }
 
       setAnalysis(data.analysis)
+
+      // Reset edited content if this is a fresh generation
+      if (!data.isEdited) {
+        setEditedContent("")
+        setFeedback("")
+      }
 
       // Check if there were any errors
       if (data.errorCount > 0) {
@@ -225,51 +258,84 @@ export function YouTubeSummarizer() {
       })
   }
 
-  const downloadAsPDF = async (content: string, title = "Video Analysis") => {
+  const handleExport = async (format: "pdf" | "docx") => {
     try {
-      setLoading(true)
-      const pdfBlob = await generatePDF(content, outputSettings, title)
+      setIsExporting(true)
+      const content = activeTab === "summarize" ? summary : analysis
+      const title = activeTab === "summarize" ? "Video Summary" : "Video Analysis"
+
+      let blob: Blob
+      let fileExtension: string
+
+      if (format === "pdf") {
+        blob = await generatePDF(content, outputSettings, title)
+        fileExtension = "pdf"
+      } else {
+        blob = await generateDOCX(content, outputSettings, title)
+        fileExtension = "docx"
+      }
 
       // Create a download link
-      const url = URL.createObjectURL(pdfBlob)
+      const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `${title.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.pdf`
+      link.download = `${title.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.${fileExtension}`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
 
       toast({
-        title: "PDF Generated",
-        description: "Your PDF has been generated and downloaded",
+        title: `${format.toUpperCase()} Generated`,
+        description: `Your ${format.toUpperCase()} has been generated and downloaded`,
         duration: 3000,
       })
     } catch (err) {
-      console.error("Error generating PDF:", err)
+      console.error(`Error generating ${format.toUpperCase()}:`, err)
       toast({
         variant: "destructive",
-        title: "PDF Generation Failed",
-        description: "Could not generate PDF. Please try again.",
+        title: `${format.toUpperCase()} Generation Failed`,
+        description: `Could not generate ${format.toUpperCase()}. Please try again.`,
       })
     } finally {
-      setLoading(false)
+      setIsExporting(false)
     }
   }
 
-  // Update output settings when language changes
-  const handleLanguageChange = (newLanguage: string) => {
-    setLanguage(newLanguage)
-    setOutputSettings({
-      ...outputSettings,
-      language: newLanguage,
+  const handleSaveEdits = (newContent: string, newFeedback: string) => {
+    setEditedContent(newContent)
+    setFeedback(newFeedback)
+
+    // If we're in the summarize tab, update the summary
+    if (activeTab === "summarize") {
+      setSummary(newContent)
+    } else {
+      setAnalysis(newContent)
+    }
+
+    toast({
+      title: "Changes saved",
+      description: "Your edits have been saved. Click 'Regenerate' to apply your feedback.",
+      duration: 5000,
     })
+  }
+
+  const toggleEditMode = () => {
+    setEditMode(!editMode)
+
+    // If we're entering edit mode, initialize the edited content
+    if (!editMode) {
+      setEditedContent(activeTab === "summarize" ? summary : analysis)
+    }
   }
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-medium">Enter YouTube URLs</h2>
-        <ModelInfo />
+        <div className="flex items-center gap-2">
+          <LanguageSelector value={language} onChange={setLanguage} disabled={loading} />
+          <ModelInfo />
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -311,8 +377,10 @@ export function YouTubeSummarizer() {
             {loading && activeTab === "summarize" ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Summarizing...
+                {editedContent ? "Regenerating..." : "Summarizing..."}
               </>
+            ) : editedContent ? (
+              "Regenerate with Feedback"
             ) : (
               "Summarize Videos"
             )}
@@ -325,15 +393,17 @@ export function YouTubeSummarizer() {
             onChange={setQuestions}
             disabled={loading}
             language={language}
-            onLanguageChange={handleLanguageChange}
+            onLanguageChange={setLanguage}
           />
 
           <Button onClick={handleAnalyze} disabled={loading} className="w-full bg-purple-600 hover:bg-purple-700">
             {loading && activeTab === "analyze" ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Analyzing...
+                {editedContent ? "Regenerating..." : "Analyzing..."}
               </>
+            ) : editedContent ? (
+              "Regenerate with Feedback"
             ) : (
               "Answer Questions"
             )}
@@ -348,7 +418,7 @@ export function YouTubeSummarizer() {
         </Alert>
       )}
 
-      {summary && activeTab === "summarize" && (
+      {summary && activeTab === "summarize" && !editMode && (
         <Card className="p-4 relative">
           <div className="absolute top-4 right-4 flex gap-2">
             <Button
@@ -360,17 +430,9 @@ export function YouTubeSummarizer() {
             >
               <Copy className="h-4 w-4" />
             </Button>
-            {outputSettings.format === "pdf" && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => downloadAsPDF(summary, "Video Summary")}
-                aria-label="Download as PDF"
-                disabled={loading}
-              >
-                <Download className="h-4 w-4" />
-              </Button>
-            )}
+            <Button variant="ghost" size="icon" onClick={toggleEditMode} aria-label="Edit content" disabled={loading}>
+              <Edit className="h-4 w-4" />
+            </Button>
           </div>
 
           {summaryInfo && summaryInfo.videoCount > 1 && (
@@ -391,10 +453,33 @@ export function YouTubeSummarizer() {
           <div className="prose max-w-none dark:prose-invert">
             <ReactMarkdown>{summary}</ReactMarkdown>
           </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExport("pdf")}
+              disabled={isExporting}
+              className="h-8 gap-1"
+            >
+              <Download className="h-4 w-4 mr-1" />
+              PDF
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExport("docx")}
+              disabled={isExporting}
+              className="h-8 gap-1"
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              DOCX
+            </Button>
+          </div>
         </Card>
       )}
 
-      {analysis && activeTab === "analyze" && (
+      {analysis && activeTab === "analyze" && !editMode && (
         <Card className="p-4 relative">
           <div className="absolute top-4 right-4 flex gap-2">
             <Button
@@ -406,23 +491,50 @@ export function YouTubeSummarizer() {
             >
               <Copy className="h-4 w-4" />
             </Button>
-            {outputSettings.format === "pdf" && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => downloadAsPDF(analysis, "Video Analysis")}
-                aria-label="Download as PDF"
-                disabled={loading}
-              >
-                <Download className="h-4 w-4" />
-              </Button>
-            )}
+            <Button variant="ghost" size="icon" onClick={toggleEditMode} aria-label="Edit content" disabled={loading}>
+              <Edit className="h-4 w-4" />
+            </Button>
           </div>
 
           <div className="prose max-w-none dark:prose-invert">
             <ReactMarkdown>{analysis}</ReactMarkdown>
           </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExport("pdf")}
+              disabled={isExporting}
+              className="h-8 gap-1"
+            >
+              <Download className="h-4 w-4 mr-1" />
+              PDF
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExport("docx")}
+              disabled={isExporting}
+              className="h-8 gap-1"
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              DOCX
+            </Button>
+          </div>
         </Card>
+      )}
+
+      {/* Document Editor for Edit Mode */}
+      {((summary && activeTab === "summarize") || (analysis && activeTab === "analyze")) && editMode && (
+        <DocumentEditor
+          content={activeTab === "summarize" ? summary : analysis}
+          onSave={handleSaveEdits}
+          outputSettings={outputSettings}
+          onExport={handleExport}
+          isExporting={isExporting}
+          title={activeTab === "summarize" ? "Video Summary" : "Video Analysis"}
+        />
       )}
     </div>
   )

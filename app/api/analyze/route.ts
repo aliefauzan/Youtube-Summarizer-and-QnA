@@ -79,6 +79,7 @@ async function analyzeVideosWithGemini(
   questions: string,
   language: string,
   outputSettings: OutputSettings,
+  feedback?: string,
 ): Promise<string> {
   if (!process.env.GEMINI_API_KEY) {
     console.warn("Gemini API key is missing. Using fallback analyzer.")
@@ -110,10 +111,7 @@ ${video.transcript}
         const model = genAI.getGenerativeModel({ model: modelName })
 
         // Determine language for instructions
-        const languageInstructions =
-          language === "id"
-            ? "Jawab pertanyaan-pertanyaan berikut berdasarkan video-video tersebut dalam bahasa Indonesia."
-            : "Answer the following questions based on the videos."
+        const languageInstructions = getLanguageInstructions(language)
 
         // Format instructions based on output settings
         const formatInstructions = getFormatInstructions(outputSettings, language)
@@ -122,17 +120,15 @@ ${video.transcript}
         const styleInstructions = getStyleInstructions(outputSettings, language)
 
         // References instructions
-        const referencesInstructions = outputSettings.includeReferences
-          ? language === "id"
-            ? "Sertakan daftar referensi di akhir dokumen, termasuk video yang dianalisis dan sumber tambahan jika ada."
-            : "Include a list of references at the end of the document, including the analyzed videos and any additional sources if used."
-          : ""
+        const referencesInstructions = getReferencesInstructions(outputSettings, language)
 
         // Page length instructions
-        const pageLengthInstructions =
-          language === "id"
-            ? `Pastikan jawaban memiliki panjang yang sesuai untuk dokumen ${outputSettings.minPages}-${outputSettings.maxPages} halaman dengan font ${outputSettings.fontFamily}, ukuran ${outputSettings.fontSize}, dan spasi ${outputSettings.lineSpacing}.`
-            : `Ensure the answer is appropriate in length for a ${outputSettings.minPages}-${outputSettings.maxPages} page document with ${outputSettings.fontFamily} font, size ${outputSettings.fontSize}, and ${outputSettings.lineSpacing} line spacing.`
+        const pageLengthInstructions = getPageLengthInstructions(outputSettings, language)
+
+        // Feedback instructions
+        const feedbackInstructions = feedback
+          ? `USER FEEDBACK: ${feedback}\nPlease incorporate this feedback into your response.`
+          : ""
 
         const prompt = `
 ${languageInstructions}
@@ -144,6 +140,8 @@ ${styleInstructions}
 ${pageLengthInstructions}
 
 ${referencesInstructions}
+
+${feedbackInstructions}
 
 VIDEO CONTENT:
 ${videoInfo}
@@ -173,57 +171,121 @@ Format your answers in Markdown, with clear headings for each question. Be thoro
   }
 }
 
+// Helper function to get language instructions
+function getLanguageInstructions(language: string): string {
+  switch (language) {
+    case "id":
+      return "Jawab pertanyaan-pertanyaan berikut berdasarkan video-video tersebut dalam bahasa Indonesia."
+    case "es":
+      return "Responde las siguientes preguntas basándote en los videos en español."
+    case "fr":
+      return "Répondez aux questions suivantes en vous basant sur les vidéos en français."
+    case "de":
+      return "Beantworten Sie die folgenden Fragen basierend auf den Videos auf Deutsch."
+    case "zh":
+      return "根据视频用中文回答以下问题。"
+    case "ja":
+      return "ビデオに基づいて、以下の質問に日本語で答えてください。"
+    case "ko":
+      return "비디오를 기반으로 다음 질문에 한국어로 답하십시오."
+    case "ar":
+      return "أجب على الأسئلة التالية بناءً على مقاطع الفيديو باللغة العربية."
+    case "hi":
+      return "वीडियो के आधार पर निम्नलिखित प्रश्नों का उत्तर हिंदी में दें।"
+    case "pt":
+      return "Responda às seguintes perguntas com base nos vídeos em português."
+    case "ru":
+      return "Ответьте на следующие вопросы на основе видео на русском языке."
+    case "en":
+    default:
+      return "Answer the following questions based on the videos in English."
+  }
+}
+
 // Helper function to get format instructions based on settings
 function getFormatInstructions(settings: OutputSettings, language: string): string {
-  if (language === "id") {
-    return settings.format === "pdf"
-      ? `Format jawaban untuk dokumen PDF dengan font ${settings.fontFamily}, ukuran ${settings.fontSize}, dan spasi ${settings.lineSpacing}.`
-      : "Format jawaban dalam Markdown dengan judul dan subjudul yang jelas."
-  } else {
-    return settings.format === "pdf"
-      ? `Format the answer for a PDF document with ${settings.fontFamily} font, size ${settings.fontSize}, and ${settings.lineSpacing} line spacing.`
-      : "Format the answer in Markdown with clear headings and subheadings."
+  const formatMap: Record<string, Record<string, string>> = {
+    en: {
+      pdf: `Format the answer for a PDF document with ${settings.fontFamily} font, size ${settings.fontSize}, and ${settings.lineSpacing} line spacing.`,
+      markdown: "Format the answer in Markdown with clear headings and subheadings.",
+      docx: `Format the answer for a Word document with ${settings.fontFamily} font, size ${settings.fontSize}, and ${settings.lineSpacing} line spacing.`,
+    },
+    id: {
+      pdf: `Format jawaban untuk dokumen PDF dengan font ${settings.fontFamily}, ukuran ${settings.fontSize}, dan spasi ${settings.lineSpacing}.`,
+      markdown: "Format jawaban dalam Markdown dengan judul dan subjudul yang jelas.",
+      docx: `Format jawaban untuk dokumen Word dengan font ${settings.fontFamily}, ukuran ${settings.fontSize}, dan spasi ${settings.lineSpacing}.`,
+    },
   }
+
+  // Default to English if language not found
+  const langMap = formatMap[language] || formatMap.en
+  return langMap[settings.format] || langMap.markdown
 }
 
 // Helper function to get style instructions based on settings
 function getStyleInstructions(settings: OutputSettings, language: string): string {
+  const styleMap: Record<string, Record<string, Record<string, string>>> = {
+    en: {
+      tone: {
+        formal: "Use formal, academic language. ",
+        informal: "Use clear, conversational language. ",
+      },
+      style: {
+        concise: "Provide concise answers that get straight to the point. ",
+        detailed: "Provide detailed and comprehensive answers. ",
+        academic:
+          "Provide answers in an academic style, including in-depth analysis and appropriate technical terminology. ",
+      },
+    },
+    id: {
+      tone: {
+        formal: "Gunakan gaya bahasa formal dan akademis. ",
+        informal: "Gunakan bahasa yang jelas dan percakapan. ",
+      },
+      style: {
+        concise: "Berikan jawaban yang ringkas dan langsung ke inti permasalahan. ",
+        detailed: "Berikan jawaban yang detail dan komprehensif. ",
+        academic:
+          "Berikan jawaban dengan gaya akademis, termasuk analisis mendalam dan terminologi teknis yang sesuai. ",
+      },
+    },
+  }
+
+  // Default to English if language not found
+  const langMap = styleMap[language] || styleMap.en
+
   let styleInstructions = ""
 
-  if (language === "id") {
-    if (settings.formalTone) {
-      styleInstructions += "Gunakan gaya bahasa formal dan akademis. "
-    }
+  // Add tone instructions
+  styleInstructions += settings.formalTone
+    ? langMap.tone.formal || styleMap.en.tone.formal
+    : langMap.tone.informal || styleMap.en.tone.informal
 
-    if (settings.summaryStyle === "concise") {
-      styleInstructions += "Berikan jawaban yang ringkas dan langsung ke inti permasalahan. "
-    } else if (settings.summaryStyle === "detailed") {
-      styleInstructions += "Berikan jawaban yang detail dan komprehensif. "
-    } else if (settings.summaryStyle === "academic") {
-      styleInstructions +=
-        "Berikan jawaban dengan gaya akademis, termasuk analisis mendalam dan terminologi teknis yang sesuai. "
-    }
-  } else {
-    if (settings.formalTone) {
-      styleInstructions += "Use formal, academic language. "
-    }
-
-    if (settings.summaryStyle === "concise") {
-      styleInstructions += "Provide concise answers that get straight to the point. "
-    } else if (settings.summaryStyle === "detailed") {
-      styleInstructions += "Provide detailed and comprehensive answers. "
-    } else if (settings.summaryStyle === "academic") {
-      styleInstructions +=
-        "Provide answers in an academic style, including in-depth analysis and appropriate technical terminology. "
-    }
-  }
+  // Add style instructions
+  styleInstructions += langMap.style[settings.summaryStyle] || styleMap.en.style[settings.summaryStyle]
 
   return styleInstructions
 }
 
+// Helper function to get references instructions
+function getReferencesInstructions(settings: OutputSettings, language: string): string {
+  if (!settings.includeReferences) return ""
+
+  return language === "id"
+    ? "Sertakan daftar referensi di akhir dokumen, termasuk video yang dianalisis dan sumber tambahan jika ada."
+    : "Include a list of references at the end of the document, including the analyzed videos and any additional sources if used."
+}
+
+// Helper function to get page length instructions
+function getPageLengthInstructions(settings: OutputSettings, language: string): string {
+  return language === "id"
+    ? `Pastikan jawaban memiliki panjang yang sesuai untuk dokumen ${settings.minPages}-${settings.maxPages} halaman dengan font ${settings.fontFamily}, ukuran ${settings.fontSize}, dan spasi ${settings.lineSpacing}.`
+    : `Ensure the answer is appropriate in length for a ${settings.minPages}-${settings.maxPages} page document with ${settings.fontFamily} font, size ${settings.fontSize}, and ${settings.lineSpacing} line spacing.`
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { urls, questions, language = "en", outputSettings } = await request.json()
+    const { urls, questions, language = "en", outputSettings, feedback, editedContent } = await request.json()
 
     // Set default output settings if not provided
     const settings: OutputSettings = outputSettings || {
@@ -245,6 +307,16 @@ export async function POST(request: NextRequest) {
 
     if (!questions || typeof questions !== "string") {
       return NextResponse.json({ error: "Please provide questions to analyze" }, { status: 400 })
+    }
+
+    // If user has provided edited content and feedback, use that directly
+    if (editedContent) {
+      return NextResponse.json({
+        analysis: editedContent,
+        videoCount: urls.length,
+        errorCount: 0,
+        isEdited: true,
+      })
     }
 
     // Process each URL in parallel
@@ -296,7 +368,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Analyze videos and answer questions
-    const analysis = await analyzeVideosWithGemini(successfulResults, questions, language, settings)
+    const analysis = await analyzeVideosWithGemini(successfulResults, questions, language, settings, feedback)
 
     // Format the response
     let finalResponse = ""
@@ -323,6 +395,7 @@ export async function POST(request: NextRequest) {
       analysis: finalResponse,
       videoCount: successfulResults.length,
       errorCount: errorResults.length,
+      isEdited: false,
     })
   } catch (error) {
     console.error("API error:", error)

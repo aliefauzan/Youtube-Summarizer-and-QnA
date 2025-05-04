@@ -18,7 +18,7 @@
     "@radix-ui/react-collapsible": "1.1.2",
     "@radix-ui/react-context-menu": "2.2.4",
     "@radix-ui/react-dialog": "1.1.4",
-    "@radix-ui/react-dropdown-menu": "2.1.4",
+    "@radix-ui/react-dropdown-menu": "latest",
     "@radix-ui/react-hover-card": "1.1.4",
     "@radix-ui/react-label": "latest",
     "@radix-ui/react-menubar": "1.1.4",
@@ -60,7 +60,8 @@
     "zod": "^3.24.1",
     "react-markdown": "latest",
     "@google/generative-ai": "latest",
-    "jspdf": "latest"
+    "jspdf": "latest",
+    "docx": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",
