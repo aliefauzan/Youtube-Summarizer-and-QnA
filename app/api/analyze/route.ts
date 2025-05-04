@@ -1,11 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { extractVideoId, createFallbackVideoData } from "@/lib/youtube"
+import type { OutputSettings } from "@/components/youtube/output-customization"
 
 // Initialize Gemini API
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
 
-// Function to fetch video data (same as in summarize route)
+// Function to fetch video data (same as before)
 async function fetchVideoData(
   videoId: string,
   originalUrl: string,
@@ -77,6 +78,7 @@ async function analyzeVideosWithGemini(
   }>,
   questions: string,
   language: string,
+  outputSettings: OutputSettings,
 ): Promise<string> {
   if (!process.env.GEMINI_API_KEY) {
     console.warn("Gemini API key is missing. Using fallback analyzer.")
@@ -108,14 +110,42 @@ ${video.transcript}
         const model = genAI.getGenerativeModel({ model: modelName })
 
         // Determine language for instructions
-        const instructions =
+        const languageInstructions =
           language === "id"
-            ? "Jawab pertanyaan-pertanyaan berikut berdasarkan video-video tersebut. Berikan jawaban yang terstruktur dan komprehensif dalam bahasa Indonesia. Jika informasi tidak tersedia dalam video, nyatakan dengan jelas."
-            : "Answer the following questions based on the videos. Provide structured and comprehensive answers. If information is not available in the videos, clearly state that."
+            ? "Jawab pertanyaan-pertanyaan berikut berdasarkan video-video tersebut dalam bahasa Indonesia."
+            : "Answer the following questions based on the videos."
+
+        // Format instructions based on output settings
+        const formatInstructions = getFormatInstructions(outputSettings, language)
+
+        // Style instructions based on output settings
+        const styleInstructions = getStyleInstructions(outputSettings, language)
+
+        // References instructions
+        const referencesInstructions = outputSettings.includeReferences
+          ? language === "id"
+            ? "Sertakan daftar referensi di akhir dokumen, termasuk video yang dianalisis dan sumber tambahan jika ada."
+            : "Include a list of references at the end of the document, including the analyzed videos and any additional sources if used."
+          : ""
+
+        // Page length instructions
+        const pageLengthInstructions =
+          language === "id"
+            ? `Pastikan jawaban memiliki panjang yang sesuai untuk dokumen ${outputSettings.minPages}-${outputSettings.maxPages} halaman dengan font ${outputSettings.fontFamily}, ukuran ${outputSettings.fontSize}, dan spasi ${outputSettings.lineSpacing}.`
+            : `Ensure the answer is appropriate in length for a ${outputSettings.minPages}-${outputSettings.maxPages} page document with ${outputSettings.fontFamily} font, size ${outputSettings.fontSize}, and ${outputSettings.lineSpacing} line spacing.`
 
         const prompt = `
-${instructions}
+${languageInstructions}
 
+${formatInstructions}
+
+${styleInstructions}
+
+${pageLengthInstructions}
+
+${referencesInstructions}
+
+VIDEO CONTENT:
 ${videoInfo}
 
 QUESTIONS:
@@ -143,9 +173,71 @@ Format your answers in Markdown, with clear headings for each question. Be thoro
   }
 }
 
+// Helper function to get format instructions based on settings
+function getFormatInstructions(settings: OutputSettings, language: string): string {
+  if (language === "id") {
+    return settings.format === "pdf"
+      ? `Format jawaban untuk dokumen PDF dengan font ${settings.fontFamily}, ukuran ${settings.fontSize}, dan spasi ${settings.lineSpacing}.`
+      : "Format jawaban dalam Markdown dengan judul dan subjudul yang jelas."
+  } else {
+    return settings.format === "pdf"
+      ? `Format the answer for a PDF document with ${settings.fontFamily} font, size ${settings.fontSize}, and ${settings.lineSpacing} line spacing.`
+      : "Format the answer in Markdown with clear headings and subheadings."
+  }
+}
+
+// Helper function to get style instructions based on settings
+function getStyleInstructions(settings: OutputSettings, language: string): string {
+  let styleInstructions = ""
+
+  if (language === "id") {
+    if (settings.formalTone) {
+      styleInstructions += "Gunakan gaya bahasa formal dan akademis. "
+    }
+
+    if (settings.summaryStyle === "concise") {
+      styleInstructions += "Berikan jawaban yang ringkas dan langsung ke inti permasalahan. "
+    } else if (settings.summaryStyle === "detailed") {
+      styleInstructions += "Berikan jawaban yang detail dan komprehensif. "
+    } else if (settings.summaryStyle === "academic") {
+      styleInstructions +=
+        "Berikan jawaban dengan gaya akademis, termasuk analisis mendalam dan terminologi teknis yang sesuai. "
+    }
+  } else {
+    if (settings.formalTone) {
+      styleInstructions += "Use formal, academic language. "
+    }
+
+    if (settings.summaryStyle === "concise") {
+      styleInstructions += "Provide concise answers that get straight to the point. "
+    } else if (settings.summaryStyle === "detailed") {
+      styleInstructions += "Provide detailed and comprehensive answers. "
+    } else if (settings.summaryStyle === "academic") {
+      styleInstructions +=
+        "Provide answers in an academic style, including in-depth analysis and appropriate technical terminology. "
+    }
+  }
+
+  return styleInstructions
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { urls, questions, language = "en" } = await request.json()
+    const { urls, questions, language = "en", outputSettings } = await request.json()
+
+    // Set default output settings if not provided
+    const settings: OutputSettings = outputSettings || {
+      format: "markdown",
+      fontFamily: "Times-Roman",
+      fontSize: 12,
+      lineSpacing: 1.5,
+      minPages: 3,
+      maxPages: 6,
+      includeReferences: true,
+      formalTone: true,
+      summaryStyle: "academic",
+      language,
+    }
 
     if (!Array.isArray(urls) || urls.length === 0) {
       return NextResponse.json({ error: "Please provide at least one valid YouTube URL" }, { status: 400 })
@@ -204,7 +296,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Analyze videos and answer questions
-    const analysis = await analyzeVideosWithGemini(successfulResults, questions, language)
+    const analysis = await analyzeVideosWithGemini(successfulResults, questions, language, settings)
 
     // Format the response
     let finalResponse = ""

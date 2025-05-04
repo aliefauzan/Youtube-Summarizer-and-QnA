@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { PlusCircle, Copy, Loader2, AlertTriangle, Link2, FileText, FileQuestion } from "lucide-react"
+import { PlusCircle, Copy, Loader2, AlertTriangle, Link2, FileText, FileQuestion, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -12,8 +12,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import ReactMarkdown from "react-markdown"
 import { UrlInput } from "@/components/youtube/url-input"
 import { QuestionInput } from "@/components/youtube/question-input"
+import { OutputCustomization, type OutputSettings } from "@/components/youtube/output-customization"
 import { ModelInfo } from "@/components/youtube/model-info"
 import { extractVideoId } from "@/lib/youtube"
+import { generatePDF } from "@/lib/pdf-generator"
 
 export function YouTubeSummarizer() {
   const [urls, setUrls] = useState<string[]>([""])
@@ -29,6 +31,18 @@ export function YouTubeSummarizer() {
     videoCount: number
     errorCount: number
   } | null>(null)
+  const [outputSettings, setOutputSettings] = useState<OutputSettings>({
+    format: "markdown",
+    fontFamily: "Times-Roman",
+    fontSize: 12,
+    lineSpacing: 1.5,
+    minPages: 3,
+    maxPages: 6,
+    includeReferences: true,
+    formalTone: true,
+    summaryStyle: "academic",
+    language: "en",
+  })
 
   const { toast } = useToast()
 
@@ -71,7 +85,13 @@ export function YouTubeSummarizer() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ urls: validUrls }),
+        body: JSON.stringify({
+          urls: validUrls,
+          outputSettings: {
+            ...outputSettings,
+            language,
+          },
+        }),
       })
 
       const data = await response.json()
@@ -148,6 +168,10 @@ export function YouTubeSummarizer() {
           urls: validUrls,
           questions,
           language,
+          outputSettings: {
+            ...outputSettings,
+            language,
+          },
         }),
       })
 
@@ -201,6 +225,46 @@ export function YouTubeSummarizer() {
       })
   }
 
+  const downloadAsPDF = async (content: string, title = "Video Analysis") => {
+    try {
+      setLoading(true)
+      const pdfBlob = await generatePDF(content, outputSettings, title)
+
+      // Create a download link
+      const url = URL.createObjectURL(pdfBlob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${title.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      toast({
+        title: "PDF Generated",
+        description: "Your PDF has been generated and downloaded",
+        duration: 3000,
+      })
+    } catch (err) {
+      console.error("Error generating PDF:", err)
+      toast({
+        variant: "destructive",
+        title: "PDF Generation Failed",
+        description: "Could not generate PDF. Please try again.",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Update output settings when language changes
+  const handleLanguageChange = (newLanguage: string) => {
+    setLanguage(newLanguage)
+    setOutputSettings({
+      ...outputSettings,
+      language: newLanguage,
+    })
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -227,6 +291,8 @@ export function YouTubeSummarizer() {
           Add Another URL
         </Button>
       </div>
+
+      <OutputCustomization settings={outputSettings} onChange={setOutputSettings} disabled={loading} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
@@ -259,7 +325,7 @@ export function YouTubeSummarizer() {
             onChange={setQuestions}
             disabled={loading}
             language={language}
-            onLanguageChange={setLanguage}
+            onLanguageChange={handleLanguageChange}
           />
 
           <Button onClick={handleAnalyze} disabled={loading} className="w-full bg-purple-600 hover:bg-purple-700">
@@ -284,10 +350,27 @@ export function YouTubeSummarizer() {
 
       {summary && activeTab === "summarize" && (
         <Card className="p-4 relative">
-          <div className="absolute top-4 right-4">
-            <Button variant="ghost" size="icon" onClick={() => copyToClipboard(summary)} aria-label="Copy to clipboard">
+          <div className="absolute top-4 right-4 flex gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => copyToClipboard(summary)}
+              aria-label="Copy to clipboard"
+              disabled={loading}
+            >
               <Copy className="h-4 w-4" />
             </Button>
+            {outputSettings.format === "pdf" && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => downloadAsPDF(summary, "Video Summary")}
+                aria-label="Download as PDF"
+                disabled={loading}
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            )}
           </div>
 
           {summaryInfo && summaryInfo.videoCount > 1 && (
@@ -313,15 +396,27 @@ export function YouTubeSummarizer() {
 
       {analysis && activeTab === "analyze" && (
         <Card className="p-4 relative">
-          <div className="absolute top-4 right-4">
+          <div className="absolute top-4 right-4 flex gap-2">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => copyToClipboard(analysis)}
               aria-label="Copy to clipboard"
+              disabled={loading}
             >
               <Copy className="h-4 w-4" />
             </Button>
+            {outputSettings.format === "pdf" && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => downloadAsPDF(analysis, "Video Analysis")}
+                aria-label="Download as PDF"
+                disabled={loading}
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            )}
           </div>
 
           <div className="prose max-w-none dark:prose-invert">

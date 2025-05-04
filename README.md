@@ -1,6 +1,6 @@
-# YouTube Video Analyzer
+# YouTube Video Analyzer with Custom Output
 
-A web application that allows users to generate summaries and answer specific questions about YouTube videos without requiring any sign-in.
+A web application that allows users to generate summaries and answer specific questions about YouTube videos with customizable output formats and styles.
 
 ## Features
 
@@ -11,9 +11,17 @@ A web application that allows users to generate summaries and answer specific qu
 - Support for multiple languages (English and Indonesian)
 - Intelligent content analysis to detect related videos
 - Automatic merging of related video summaries
+- Customizable output formats (Markdown, PDF)
+- Formatting options for PDF output:
+  - Font family (Times New Roman, Helvetica, Courier)
+  - Font size
+  - Line spacing
+  - Page limits (minimum and maximum)
+- Content style options (concise, detailed, academic)
 - Copy summaries and answers to clipboard
-- Markdown formatting for easy readability
-- Fallback summarization when APIs are unavailable
+- Download as PDF with proper formatting
+- Predefined question templates for different analysis types
+- Support for blockchain and smart contract specific questions
 
 ## Getting Started
 
@@ -58,40 +66,59 @@ npm run dev
 
 1. Users enter one or more YouTube URLs in the input fields
 2. The application fetches video metadata and displays compact previews
-3. When the user clicks "Summarize Videos", the application:
+3. Users can customize output settings (format, style, etc.)
+4. When the user clicks "Summarize Videos", the application:
    - Extracts video IDs from the URLs
    - Fetches video metadata and transcripts in parallel
-   - Sends the content to the Gemini API for summarization using the efficient gemini-2.0-flash-lite model
+   - Sends the content to the Gemini API for summarization
    - Analyzes the summaries for content relevance
-   - If videos are related, merges them into a cohesive summary
-   - If videos are unrelated, keeps individual summaries
-   - Displays the formatted summaries with appropriate indicators
+   - Formats the output according to user preferences
+   - Allows downloading as PDF if that format is selected
 
 ### Question Answering Mode
 
 1. Users enter YouTube URLs and specific questions they want answered
 2. Users can select their preferred language (English or Indonesian)
-3. When the user clicks "Answer Questions", the application:
+3. Users can use predefined question templates or create custom questions
+4. Users can customize output settings (format, style, etc.)
+5. When the user clicks "Answer Questions", the application:
    - Processes the videos as in summarization mode
    - Analyzes the video content in relation to the specific questions
    - Generates structured answers to each question based on the video content
-   - Formats the answers in a clear, readable format
-   - Displays the answers with appropriate context
+   - Formats the answers according to user preferences
+   - Allows downloading as PDF if that format is selected
 
-## Content Analysis
+## PDF Generation
 
-The application uses a text similarity algorithm to determine if videos are related:
+The application can generate properly formatted PDF documents with:
 
-1. **Keyword Extraction**: Extracts meaningful keywords from each summary
-2. **Similarity Calculation**: Uses a Jaccard similarity coefficient to measure content overlap
-3. **Threshold-Based Decision**: Determines if videos are related based on a similarity threshold
-4. **Intelligent Merging**: For related videos, combines key points while eliminating duplicates
+1. User-specified font family (Times New Roman, Helvetica, Courier)
+2. Custom font size
+3. Adjustable line spacing
+4. Content that meets specified page limits
+5. Proper headings and structure
+6. Optional references section
+
+The PDF generator automatically adjusts content to meet the specified page limits by:
+- Expanding content with additional analysis if below minimum page count
+- Condensing content by focusing on key points if above maximum page count
+
+## Question Templates
+
+The application includes predefined question templates for different types of analysis:
+
+1. **Academic Analysis** - Structured questions for formal academic analysis
+2. **Technical Review** - Questions focused on technical aspects and implementation
+3. **Business Analysis** - Questions focused on business value and market analysis
+4. **Blockchain Template** - Specialized questions for blockchain and smart contract analysis
+
+Templates are available in both English and Indonesian.
 
 ## Limitations
 
 - The current implementation simulates transcript fetching using video descriptions
 - For a production application, you would need to use a specialized YouTube transcript API
-- The fallback summarizer provides basic summaries when the Gemini API is unavailable
+- PDF page estimation is approximate and may not exactly match printed output
 - The content similarity analysis uses a simple algorithm and may not catch all relationships
 
 ## Project Structure
@@ -116,20 +143,23 @@ youtube-summarizer/
 │       ├── url-input.tsx
 │       ├── video-preview.tsx
 │       ├── question-input.tsx
+│       ├── output-customization.tsx
 │       └── youtube-summarizer.tsx
 ├── lib/
 │   ├── youtube.ts
 │   ├── fallback-summarizer.ts
-│   └── content-analyzer.ts
+│   ├── content-analyzer.ts
+│   └── pdf-generator.ts
 └── ... (config files)
 \`\`\`
 
 ## Future Improvements
 
 - Implement a real YouTube transcript API for better summaries and analysis
-- Add user preferences for summary length and format
-- Improve the content similarity algorithm with more advanced NLP techniques
+- Add more output formats (DOCX, HTML, etc.)
+- Improve the PDF generation with better page estimation and formatting
 - Add support for playlists and channels
 - Implement caching to reduce API calls for previously analyzed videos
 - Support additional languages beyond English and Indonesian
-- Add export options for summaries and answers (PDF, Word, etc.)
+- Add collaborative analysis features for team projects
+- Implement user accounts to save and manage analyses
