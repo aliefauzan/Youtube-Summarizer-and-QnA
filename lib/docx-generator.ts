@@ -2,128 +2,91 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Line
 import type { OutputSettings } from "@/components/youtube/output-customization"
 
 // Function to convert markdown to DOCX elements
-function markdownToDocxElements(markdown: string): any[] {
+function markdownToDocxElements(markdown: string, lineSpacing: number): any[] {
   const elements: any[] = []
 
-  // Split markdown into lines
-  const lines = markdown.split("\n")
+  // Split markdown into paragraphs
+  const paragraphs = markdown.split("\n\n")
 
-  let inList = false
-  let listItems: string[] = []
+  for (let i = 0; i < paragraphs.length; i++) {
+    const paragraph = paragraphs[i].trim()
+    if (paragraph === "") continue
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
+    // Split paragraph into lines
+    const lines = paragraph.split("\n")
 
-    // Handle headers
-    if (line.startsWith("# ")) {
-      if (inList) {
-        elements.push(...createList(listItems))
-        listItems = []
-        inList = false
+    for (let j = 0; j < lines.length; j++) {
+      const line = lines[j].trim()
+      if (line === "") continue
+
+      // Handle headers
+      if (line.startsWith("# ")) {
+        elements.push(
+          new Paragraph({
+            text: line.substring(2),
+            heading: HeadingLevel.HEADING_1,
+            spacing: { before: 240, after: 120, line: Math.round(lineSpacing * 240), lineRule: LineRuleType.EXACT },
+          }),
+        )
+      } else if (line.startsWith("## ")) {
+        elements.push(
+          new Paragraph({
+            text: line.substring(3),
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 240, after: 120, line: Math.round(lineSpacing * 240), lineRule: LineRuleType.EXACT },
+          }),
+        )
+      } else if (line.startsWith("### ")) {
+        elements.push(
+          new Paragraph({
+            text: line.substring(4),
+            heading: HeadingLevel.HEADING_3,
+            spacing: { before: 240, after: 120, line: Math.round(lineSpacing * 240), lineRule: LineRuleType.EXACT },
+          }),
+        )
       }
-      elements.push(
-        new Paragraph({
-          text: line.substring(2),
-          heading: HeadingLevel.HEADING_1,
-          spacing: { before: 240, after: 120 },
-        }),
-      )
-    } else if (line.startsWith("## ")) {
-      if (inList) {
-        elements.push(...createList(listItems))
-        listItems = []
-        inList = false
+      // Handle bullet points
+      else if (line.match(/^\s*[-*+•]\s+/)) {
+        elements.push(
+          new Paragraph({
+            text: line.replace(/^\s*[-*+•]\s+/, ""),
+            bullet: { level: 0 },
+            spacing: { before: 60, after: 60, line: Math.round(lineSpacing * 240), lineRule: LineRuleType.EXACT },
+          }),
+        )
       }
-      elements.push(
-        new Paragraph({
-          text: line.substring(3),
-          heading: HeadingLevel.HEADING_2,
-          spacing: { before: 240, after: 120 },
-        }),
-      )
-    } else if (line.startsWith("### ")) {
-      if (inList) {
-        elements.push(...createList(listItems))
-        listItems = []
-        inList = false
-      }
-      elements.push(
-        new Paragraph({
-          text: line.substring(4),
-          heading: HeadingLevel.HEADING_3,
-          spacing: { before: 240, after: 120 },
-        }),
-      )
-    }
-    // Handle bullet points
-    else if (line.match(/^\s*[-*+•]\s+/)) {
-      inList = true
-      listItems.push(line.replace(/^\s*[-*+•]\s+/, ""))
-    }
-    // Handle horizontal rule
-    else if (line.match(/^---+$/)) {
-      if (inList) {
-        elements.push(...createList(listItems))
-        listItems = []
-        inList = false
-      }
-      elements.push(
-        new Paragraph({
-          border: {
-            bottom: {
-              color: "auto",
-              space: 1,
-              style: BorderStyle.SINGLE,
-              size: 6,
+      // Handle horizontal rule
+      else if (line.match(/^---+$/)) {
+        elements.push(
+          new Paragraph({
+            border: {
+              bottom: {
+                color: "auto",
+                space: 1,
+                style: BorderStyle.SINGLE,
+                size: 6,
+              },
             },
-          },
-          spacing: { before: 120, after: 120 },
-        }),
-      )
-    }
-    // Handle regular paragraphs
-    else if (line.trim() !== "") {
-      if (inList) {
-        elements.push(...createList(listItems))
-        listItems = []
-        inList = false
+            spacing: { before: 120, after: 120, line: Math.round(lineSpacing * 240), lineRule: LineRuleType.EXACT },
+          }),
+        )
       }
+      // Handle regular paragraphs
+      else {
+        // Process bold and italic formatting
+        const textRuns = processTextFormatting(line)
 
-      // Process bold and italic formatting
-      const textRuns = processTextFormatting(line)
-
-      elements.push(
-        new Paragraph({
-          children: textRuns,
-          spacing: { before: 120, after: 120 },
-        }),
-      )
+        elements.push(
+          new Paragraph({
+            children: textRuns,
+            spacing: { before: 120, after: 120, line: Math.round(lineSpacing * 240), lineRule: LineRuleType.EXACT },
+          }),
+        )
+      }
     }
-    // Handle empty lines
-    else if (line.trim() === "" && !inList) {
-      elements.push(new Paragraph({}))
-    }
-  }
-
-  // Handle any remaining list items
-  if (inList && listItems.length > 0) {
-    elements.push(...createList(listItems))
   }
 
   return elements
-}
-
-// Helper function to create a list
-function createList(items: string[]): Paragraph[] {
-  return items.map((item) => {
-    return new Paragraph({
-      text: item,
-      bullet: {
-        level: 0,
-      },
-      spacing: { before: 60, after: 60 },
-    })
-  })
 }
 
 // Helper function to process text formatting (bold, italic)
@@ -191,7 +154,7 @@ export async function generateDOCX(content: string, settings: OutputSettings, ti
           },
           paragraph: {
             spacing: {
-              line: settings.lineSpacing * 240, // Convert to line spacing in twips
+              line: Math.round(settings.lineSpacing * 240), // Convert to line spacing in twips
               lineRule: LineRuleType.EXACT,
             },
           },
@@ -207,6 +170,12 @@ export async function generateDOCX(content: string, settings: OutputSettings, ti
             size: (settings.fontSize + 8) * 2, // Larger size for headings
             bold: true,
           },
+          paragraph: {
+            spacing: {
+              line: Math.round(settings.lineSpacing * 240), // Apply line spacing to headings too
+              lineRule: LineRuleType.EXACT,
+            },
+          },
         },
         {
           id: "Heading2",
@@ -219,6 +188,12 @@ export async function generateDOCX(content: string, settings: OutputSettings, ti
             size: (settings.fontSize + 4) * 2, // Larger size for headings
             bold: true,
           },
+          paragraph: {
+            spacing: {
+              line: Math.round(settings.lineSpacing * 240), // Apply line spacing to headings too
+              lineRule: LineRuleType.EXACT,
+            },
+          },
         },
         {
           id: "Heading3",
@@ -230,6 +205,12 @@ export async function generateDOCX(content: string, settings: OutputSettings, ti
             font: mapFontFamily(settings.fontFamily),
             size: (settings.fontSize + 2) * 2, // Larger size for headings
             bold: true,
+          },
+          paragraph: {
+            spacing: {
+              line: Math.round(settings.lineSpacing * 240), // Apply line spacing to headings too
+              lineRule: LineRuleType.EXACT,
+            },
           },
         },
       ],
@@ -252,10 +233,15 @@ export async function generateDOCX(content: string, settings: OutputSettings, ti
             text: title,
             heading: HeadingLevel.HEADING_1,
             alignment: AlignmentType.CENTER,
-            spacing: { before: 240, after: 480 },
+            spacing: {
+              before: 240,
+              after: 480,
+              line: Math.round(settings.lineSpacing * 240),
+              lineRule: LineRuleType.EXACT,
+            },
           }),
           // Content
-          ...markdownToDocxElements(content),
+          ...markdownToDocxElements(content, settings.lineSpacing),
         ],
       },
     ],

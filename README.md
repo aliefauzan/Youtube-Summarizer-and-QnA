@@ -1,11 +1,3 @@
-<div align="center">
-   <h1>YouTube Summarizer and QnA</h1>
-   <img src="https://github.com/aliefauzan/Youtube-Summarizer-and-QnA/blob/main/Showcase.jpg?raw=true" alt="Screenshot" width="600px" />
- </div>
- <div align="center">
-   <img src="https://github.com/aliefauzan/Youtube-Summarizer-and-QnA/blob/main/Showcase1.jpg?raw=ture" alt="Screenshot1" width="600px" />
- </div>
- 
 # YouTube Video Analyzer with Multilingual Support and Document Editing
 
 A comprehensive web application that allows users to generate summaries and answer specific questions about YouTube videos with customizable output formats, styles, and languages, plus document editing capabilities.

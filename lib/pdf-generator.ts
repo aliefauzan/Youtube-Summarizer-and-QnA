@@ -174,20 +174,33 @@ export async function generatePDF(content: string, settings: OutputSettings, tit
   const pageWidth = 210 - margin * 2 // A4 width minus margins
   const pageHeight = 297 - margin * 2 // A4 height minus margins
 
-  const lines = doc.splitTextToSize(adjustedText, pageWidth)
-
+  // Split text into paragraphs and then into lines
+  const paragraphs = adjustedText.split("\n\n")
   let y = 30 // Start position after title
   let pageCount = 1
 
-  for (let i = 0; i < lines.length; i++) {
-    if (y > pageHeight) {
+  for (let i = 0; i < paragraphs.length; i++) {
+    const paragraph = paragraphs[i].trim()
+    if (paragraph === "") continue
+
+    // Split paragraph into lines that fit the page width
+    const lines = doc.splitTextToSize(paragraph, pageWidth)
+
+    // Check if we need to add a new page
+    if (y + lines.length * lineHeight > pageHeight) {
       doc.addPage()
       y = margin
       pageCount++
     }
 
-    doc.text(lines[i], margin, y)
-    y += lineHeight
+    // Add each line with proper spacing
+    for (let j = 0; j < lines.length; j++) {
+      doc.text(lines[j], margin, y)
+      y += lineHeight
+    }
+
+    // Add extra space between paragraphs (half a line)
+    y += lineHeight * 0.5
   }
 
   // Save the PDF

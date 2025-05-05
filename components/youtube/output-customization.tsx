@@ -12,7 +12,7 @@ import { ChevronDown, ChevronUp, Settings2 } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 
 export interface OutputSettings {
-  format: "markdown" | "pdf"
+  format: "markdown" | "pdf" | "docx"
   fontFamily: string
   fontSize: number
   lineSpacing: number
@@ -38,6 +38,11 @@ export function OutputCustomization({ settings, onChange, disabled = false }: Ou
       ...settings,
       [key]: value,
     })
+  }
+
+  // Helper function to format line spacing display
+  const formatLineSpacing = (value: number) => {
+    return value.toFixed(1)
   }
 
   return (
@@ -77,6 +82,7 @@ export function OutputCustomization({ settings, onChange, disabled = false }: Ou
                 <SelectContent>
                   <SelectItem value="markdown">Markdown</SelectItem>
                   <SelectItem value="pdf">PDF</SelectItem>
+                  <SelectItem value="docx">DOCX</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -100,10 +106,10 @@ export function OutputCustomization({ settings, onChange, disabled = false }: Ou
             </div>
           </div>
 
-          {settings.format === "pdf" && (
+          {(settings.format === "pdf" || settings.format === "docx") && (
             <>
               <Separator className="my-2" />
-              <h3 className="text-sm font-medium mb-2">PDF Settings</h3>
+              <h3 className="text-sm font-medium mb-2">Document Settings</h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -140,16 +146,25 @@ export function OutputCustomization({ settings, onChange, disabled = false }: Ou
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="lineSpacing">Line Spacing: {settings.lineSpacing.toFixed(1)}</Label>
-                  <Slider
-                    id="lineSpacing"
-                    disabled={disabled}
-                    min={1.0}
-                    max={2.0}
-                    step={0.1}
-                    value={[settings.lineSpacing]}
-                    onValueChange={(value) => updateSettings("lineSpacing", value[0])}
-                  />
+                  <Label htmlFor="lineSpacing" className="flex justify-between">
+                    <span>Line Spacing:</span>
+                    <span className="font-medium">{formatLineSpacing(settings.lineSpacing)}</span>
+                  </Label>
+                  <div className="pt-2">
+                    <Slider
+                      id="lineSpacing"
+                      disabled={disabled}
+                      min={1.0}
+                      max={2.5}
+                      step={0.1}
+                      value={[settings.lineSpacing]}
+                      onValueChange={(value) => updateSettings("lineSpacing", value[0])}
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground pt-1">
+                    <span>Single</span>
+                    <span>Double</span>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -213,8 +228,10 @@ export function OutputCustomization({ settings, onChange, disabled = false }: Ou
       {isExpanded && (
         <CardFooter className="border-t pt-4 text-xs text-muted-foreground">
           {settings.format === "pdf"
-            ? "PDF output will be formatted according to these specifications."
-            : "Markdown output will be displayed in the browser and can be copied to clipboard."}
+            ? `PDF output will be formatted with ${settings.fontFamily}, ${settings.fontSize}pt font, and ${formatLineSpacing(settings.lineSpacing)} line spacing.`
+            : settings.format === "docx"
+              ? `DOCX output will be formatted with ${settings.fontFamily}, ${settings.fontSize}pt font, and ${formatLineSpacing(settings.lineSpacing)} line spacing.`
+              : "Markdown output will be displayed in the browser and can be copied to clipboard."}
         </CardFooter>
       )}
     </Card>
