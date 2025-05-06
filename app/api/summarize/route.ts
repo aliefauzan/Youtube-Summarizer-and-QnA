@@ -3,6 +3,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai"
 import { extractVideoId, createFallbackVideoData } from "@/lib/youtube"
 import { generateBasicSummary } from "@/lib/fallback-summarizer"
 import { areRelated, mergeSummaries } from "@/lib/content-analyzer"
+import { getCachedVideoData, getCachedSummary, cacheSummary } from "@/lib/cache-service"
+import type { OutputSettings } from "@/components/youtube/output-customization"
 
 // Initialize Gemini API
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
@@ -18,6 +20,19 @@ async function fetchVideoData(
   url: string
   fallback?: boolean
 }> {
+  // Check cache first
+  const cachedData = getCachedVideoData(videoId)
+  if (cachedData) {
+    console.log(`Using cached data for video ${videoId}`)
+    return {
+      transcript: cachedData.transcript,
+      title: cachedData.title,
+      channelTitle: cachedData.channelTitle,
+      url: originalUrl || `https://www.youtube.com/watch?v=${videoId}`,
+      fallback: false,
+    }
+  }
+
   if (!process.env.YOUTUBE_API_KEY) {
     console.warn("YouTube API key is missing. Using fallback data.")
     return createFallbackVideoData(videoId, originalUrl)
@@ -70,7 +85,12 @@ async function fetchVideoData(
 }
 
 // Function to summarize text using Gemini API
-async function summarizeWithGemini(text: string, videoTitle: string): Promise<string> {
+async function summarizeWithGemini(
+  text: string,
+  videoTitle: string,
+  language: string,
+  outputSettings: OutputSettings,
+): Promise<string> {
   if (!process.env.GEMINI_API_KEY) {
     console.warn("Gemini API key is missing. Using fallback summarizer.")
     return generateBasicSummary(text, videoTitle)
@@ -87,7 +107,12 @@ async function summarizeWithGemini(text: string, videoTitle: string): Promise<st
         console.log(`Attempting to use Gemini model: ${modelName}`)
         const model = genAI.getGenerativeModel({ model: modelName })
 
+        // Determine language for instructions
+        const languageInstructions = getLanguageInstructions(language)
+
         const prompt = `
+        ${languageInstructions}
+        
         Please summarize the following YouTube video content in a clear, concise manner.
         The video title is: "${videoTitle}"
         
@@ -127,12 +152,68 @@ async function summarizeWithGemini(text: string, videoTitle: string): Promise<st
   }
 }
 
+// Helper function to get language instructions
+function getLanguageInstructions(language: string): string {
+  switch (language) {
+    case "id":
+      return "Buatlah ringkasan dalam bahasa Indonesia."
+    case "es":
+      return "Crea un resumen en español."
+    case "fr":
+      return "Créez un résumé en français."
+    case "de":
+      return "Erstellen Sie eine Zusammenfassung auf Deutsch."
+    case "zh":
+      return "用中文创建摘要。"
+    case "ja":
+      return "日本語で要約を作成してください。"
+    case "ko":
+      return "한국어로 요약을 작성하세요."
+    case "ar":
+      return "قم بإنشاء ملخص باللغة العربية."
+    case "hi":
+      return "हिंदी में एक सारांश बनाएं।"
+    case "pt":
+      return "Crie um resumo em português."
+    case "ru":
+      return "Создайте резюме на русском языке."
+    case "en":
+    default:
+      return "Create a summary in English."
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { urls } = await request.json()
+    const { urls, language = "en", outputSettings, skipCache = false, feedback, editedContent } = await request.json()
 
     if (!Array.isArray(urls) || urls.length === 0) {
       return NextResponse.json({ error: "Please provide at least one valid YouTube URL" }, { status: 400 })
+    }
+
+    // If user has provided edited content and feedback, use that directly
+    if (editedContent) {
+      return NextResponse.json({
+        summary: editedContent,
+        videoCount: urls.length,
+        errorCount: 0,
+        isEdited: true,
+      })
+    }
+
+    // Check cache first (unless skipCache is true)
+    if (!skipCache && !feedback) {
+      const cachedSummary = getCachedSummary(urls, language)
+      if (cachedSummary) {
+        console.log(`Using cached summary for ${urls.join(", ")}`)
+        return NextResponse.json({
+          summary: cachedSummary.summary,
+          areVideosRelated: true, // Assume related for cached summaries
+          videoCount: urls.length,
+          errorCount: 0,
+          fromCache: true,
+        })
+      }
     }
 
     // Process each URL in parallel
@@ -149,7 +230,7 @@ export async function POST(request: NextRequest) {
 
         try {
           const { transcript, title, channelTitle, url: videoUrl, fallback } = await fetchVideoData(videoId, url)
-          const summary = await summarizeWithGemini(transcript, title)
+          const summary = await summarizeWithGemini(transcript, title, language, outputSettings)
 
           return {
             error: false,
@@ -226,12 +307,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Add any error messages
+    // Add any error messagesges
     if (errorResults.length > 0) {
       finalSummary += `\n## Errors\n\n`
       errorResults.forEach((result) => {
         finalSummary += `${result.message}\n\n`
       })
+    }
+
+    // Cache the summary if there were no errors and no feedback was provided
+    if (errorResults.length === 0 && !feedback) {
+      cacheSummary(urls, finalSummary, language, outputSettings)
     }
 
     return NextResponse.json({

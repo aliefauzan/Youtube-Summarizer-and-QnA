@@ -1,12 +1,30 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { formatDuration } from "@/lib/youtube"
+import { getCachedVideoData, cacheVideoData } from "@/lib/cache-service"
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const videoId = searchParams.get("videoId")
+  const skipCache = searchParams.get("skipCache") === "true"
 
   if (!videoId) {
     return NextResponse.json({ error: "Video ID is required" }, { status: 400 })
+  }
+
+  // Check cache first (unless skipCache is true)
+  if (!skipCache) {
+    const cachedData = getCachedVideoData(videoId)
+    if (cachedData) {
+      console.log(`Using cached data for video ${videoId}`)
+      return NextResponse.json({
+        title: cachedData.title,
+        channelTitle: cachedData.channelTitle,
+        description: cachedData.description,
+        publishedAt: cachedData.publishedAt,
+        thumbnailUrl: cachedData.thumbnailUrl,
+        fromCache: true,
+      })
+    }
   }
 
   if (!process.env.YOUTUBE_API_KEY) {
@@ -65,6 +83,24 @@ export async function GET(request: NextRequest) {
     }
 
     const video = videoData.items[0]
+    const thumbnailUrl =
+      video.snippet.thumbnails?.maxres?.url ||
+      video.snippet.thumbnails?.high?.url ||
+      video.snippet.thumbnails?.medium?.url ||
+      video.snippet.thumbnails?.default?.url ||
+      ""
+
+    // Cache the video data
+    cacheVideoData({
+      videoId,
+      title: video.snippet.title,
+      channelTitle: video.snippet.channelTitle,
+      description: video.snippet.description || "",
+      transcript: `Title: ${video.snippet.title}\n\nDescription: ${video.snippet.description || "No description available."}\n\n(This is a simulated transcript for demonstration purposes.)`,
+      thumbnailUrl,
+      publishedAt: video.snippet.publishedAt,
+      timestamp: Date.now(),
+    })
 
     return NextResponse.json({
       title: video.snippet.title,
