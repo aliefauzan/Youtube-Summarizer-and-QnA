@@ -1,7 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { PlusCircle, Copy, Loader2, AlertTriangle, Link2, FileText, FileQuestion, Download, Edit } from "lucide-react"
+import {
+  PlusCircle,
+  Copy,
+  Loader2,
+  AlertTriangle,
+  Link2,
+  FileText,
+  FileQuestion,
+  Download,
+  Edit,
+  Database,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -16,6 +27,7 @@ import { OutputCustomization, type OutputSettings } from "@/components/youtube/o
 import { LanguageSelector } from "@/components/youtube/language-selector"
 import { DocumentEditor } from "@/components/youtube/document-editor"
 import { ModelInfo } from "@/components/youtube/model-info"
+import { CacheManager } from "@/components/youtube/cache-manager"
 import { extractVideoId } from "@/lib/youtube"
 import { generatePDF } from "@/lib/pdf-generator"
 import { generateDOCX } from "@/lib/docx-generator"
@@ -26,9 +38,11 @@ export function YouTubeSummarizer() {
   const [analysis, setAnalysis] = useState<string>("")
   const [questions, setQuestions] = useState<string>("")
   const [language, setLanguage] = useState<string>("en")
+  const [transcriptLanguages, setTranscriptLanguages] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string>("")
   const [activeTab, setActiveTab] = useState<string>("summarize")
+  const [showCacheManager, setShowCacheManager] = useState<boolean>(false)
   const [summaryInfo, setSummaryInfo] = useState<{
     areVideosRelated: boolean
     videoCount: number
@@ -77,6 +91,13 @@ export function YouTubeSummarizer() {
     setUrls(newUrls)
   }
 
+  const handleTranscriptLanguageChange = (videoId: string, language: string) => {
+    setTranscriptLanguages((prev) => ({
+      ...prev,
+      [videoId]: language,
+    }))
+  }
+
   const handleSummarize = async () => {
     // Validate URLs
     const validUrls = urls.filter((url) => {
@@ -107,6 +128,7 @@ export function YouTubeSummarizer() {
             ...outputSettings,
             language,
           },
+          transcriptLanguages,
           feedback: feedback || undefined,
           editedContent: editedContent || undefined,
         }),
@@ -147,6 +169,15 @@ export function YouTubeSummarizer() {
           title: "Related Content Detected",
           description: `The ${data.videoCount} videos appear to be related. A combined summary has been created.`,
           duration: 5000,
+        })
+      }
+
+      // Notify if content was from cache
+      if (data.fromCache) {
+        toast({
+          title: "Using Cached Result",
+          description: "This summary was loaded from cache for faster response.",
+          duration: 3000,
         })
       }
     } catch (err) {
@@ -197,6 +228,7 @@ export function YouTubeSummarizer() {
             ...outputSettings,
             language,
           },
+          transcriptLanguages,
           feedback: feedback || undefined,
           editedContent: editedContent || undefined,
         }),
@@ -223,6 +255,15 @@ export function YouTubeSummarizer() {
           description: `${data.errorCount} video(s) could not be analyzed. Check the results for details.`,
           variant: "destructive",
           duration: 5000,
+        })
+      }
+
+      // Notify if content was from cache
+      if (data.fromCache) {
+        toast({
+          title: "Using Cached Result",
+          description: "This analysis was loaded from cache for faster response.",
+          duration: 3000,
         })
       }
     } catch (err) {
@@ -328,15 +369,25 @@ export function YouTubeSummarizer() {
     }
   }
 
+  const toggleCacheManager = () => {
+    setShowCacheManager(!showCacheManager)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-medium">Enter YouTube URLs</h2>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={toggleCacheManager} className="h-8">
+            <Database className="h-4 w-4 mr-2" />
+            Cache
+          </Button>
           <LanguageSelector value={language} onChange={setLanguage} disabled={loading} />
           <ModelInfo />
         </div>
       </div>
+
+      {showCacheManager && <CacheManager />}
 
       <div className="space-y-4">
         {urls.map((url, index) => (
@@ -347,6 +398,8 @@ export function YouTubeSummarizer() {
             onRemove={() => removeUrlField(index)}
             disabled={loading}
             showRemoveButton={urls.length > 1}
+            language={language}
+            onTranscriptLanguageChange={handleTranscriptLanguageChange}
           />
         ))}
       </div>

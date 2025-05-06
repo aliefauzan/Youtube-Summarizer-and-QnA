@@ -4,8 +4,10 @@ import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Trash2, AlertTriangle } from "lucide-react"
-import { VideoPreview } from "@/components/youtube/video-preview"
+import { VideoPreview } from "./video-preview"
+import { TranscriptInfo } from "./transcript-info"
 import { extractVideoId } from "@/lib/youtube"
+import { fetchTranscript } from "@/lib/transcript-service"
 
 interface UrlInputProps {
   value: string
@@ -13,9 +15,19 @@ interface UrlInputProps {
   onRemove: () => void
   disabled?: boolean
   showRemoveButton?: boolean
+  language?: string
+  onTranscriptLanguageChange?: (videoId: string, language: string) => void
 }
 
-export function UrlInput({ value, onChange, onRemove, disabled = false, showRemoveButton = true }: UrlInputProps) {
+export function UrlInput({
+  value,
+  onChange,
+  onRemove,
+  disabled = false,
+  showRemoveButton = true,
+  language = "en",
+  onTranscriptLanguageChange,
+}: UrlInputProps) {
   const [videoData, setVideoData] = useState<{
     videoId: string
     title: string
@@ -23,6 +35,8 @@ export function UrlInput({ value, onChange, onRemove, disabled = false, showRemo
     viewCount?: number
     duration?: string
     fallback?: boolean
+    hasTranscript?: boolean
+    transcriptDisabled?: boolean
   } | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -47,6 +61,11 @@ export function UrlInput({ value, onChange, onRemove, disabled = false, showRemo
           setError(data.error)
           setVideoData(null)
         } else {
+          // Check if transcript is available
+          const transcriptResponse = await fetchTranscript(videoId, language)
+          const hasTranscript = !!transcriptResponse && transcriptResponse.transcript.length > 0
+          const transcriptDisabled = !!transcriptResponse && transcriptResponse.transcriptDisabled
+
           setVideoData({
             videoId,
             title: data.title || `YouTube Video (ID: ${videoId})`,
@@ -54,6 +73,8 @@ export function UrlInput({ value, onChange, onRemove, disabled = false, showRemo
             viewCount: data.viewCount,
             duration: data.duration,
             fallback: data.fallback,
+            hasTranscript,
+            transcriptDisabled,
           })
           setError(null)
         }
@@ -65,6 +86,8 @@ export function UrlInput({ value, onChange, onRemove, disabled = false, showRemo
           title: `YouTube Video (ID: ${videoId})`,
           channelTitle: "Unknown Channel",
           fallback: true,
+          hasTranscript: false,
+          transcriptDisabled: true,
         })
       } finally {
         setIsLoading(false)
@@ -78,7 +101,13 @@ export function UrlInput({ value, onChange, onRemove, disabled = false, showRemo
       setVideoData(null)
       setError(null)
     }
-  }, [value])
+  }, [value, language])
+
+  const handleTranscriptLanguageChange = (lang: string) => {
+    if (videoData && onTranscriptLanguageChange) {
+      onTranscriptLanguageChange(videoData.videoId, lang)
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -105,15 +134,26 @@ export function UrlInput({ value, onChange, onRemove, disabled = false, showRemo
       )}
 
       {videoData && (
-        <VideoPreview
-          videoId={videoData.videoId}
-          title={videoData.title}
-          channelTitle={videoData.channelTitle}
-          viewCount={videoData.viewCount}
-          duration={videoData.duration}
-          isLoading={isLoading}
-          isFallback={videoData.fallback}
-        />
+        <div className="space-y-2">
+          <VideoPreview
+            videoId={videoData.videoId}
+            title={videoData.title}
+            channelTitle={videoData.channelTitle}
+            viewCount={videoData.viewCount}
+            duration={videoData.duration}
+            isLoading={isLoading}
+            isFallback={videoData.fallback}
+          />
+
+          <div className="flex justify-end">
+            <TranscriptInfo
+              videoId={videoData.videoId}
+              hasTranscript={!!videoData.hasTranscript}
+              transcriptDisabled={!!videoData.transcriptDisabled}
+              onLanguageChange={handleTranscriptLanguageChange}
+            />
+          </div>
+        </div>
       )}
     </div>
   )

@@ -3,7 +3,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai"
 import { extractVideoId, createFallbackVideoData } from "@/lib/youtube"
 import { generateBasicSummary } from "@/lib/fallback-summarizer"
 import { areRelated, mergeSummaries } from "@/lib/content-analyzer"
-import { getCachedVideoData, getCachedSummary, cacheSummary } from "@/lib/cache-service"
+import { getCachedVideoData, getCachedSummary, cacheSummary, cacheVideoData } from "@/lib/cache-service"
+import { fetchTranscript, formatTranscript } from "@/lib/transcript-service"
 import type { OutputSettings } from "@/components/youtube/output-customization"
 
 // Initialize Gemini API
@@ -13,6 +14,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
 async function fetchVideoData(
   videoId: string,
   originalUrl: string,
+  language: string,
 ): Promise<{
   transcript: string
   title: string
@@ -70,13 +72,56 @@ async function fetchVideoData(
     const videoTitle = videoData.items[0].snippet.title
     const channelTitle = videoData.items[0].snippet.channelTitle
     const description = videoData.items[0].snippet.description || "No description available."
+    const thumbnailUrl =
+      videoData.items[0].snippet.thumbnails?.maxres?.url ||
+      videoData.items[0].snippet.thumbnails?.high?.url ||
+      videoData.items[0].snippet.thumbnails?.medium?.url ||
+      videoData.items[0].snippet.thumbnails?.default?.url ||
+      ""
+    const publishedAt = videoData.items[0].snippet.publishedAt
 
-    // In a real implementation, you would use a specialized library to get the transcript
+    // Try to fetch transcript
+    const transcriptResponse = await fetchTranscript(videoId, language)
+    let transcriptText: string
+
+    if (transcriptResponse && transcriptResponse.transcript.length > 0) {
+      // We have a transcript
+      transcriptText = formatTranscript(transcriptResponse.transcript, videoTitle, description)
+
+      // Cache the video data with transcript
+      cacheVideoData({
+        videoId,
+        title: videoTitle,
+        channelTitle,
+        description,
+        transcript: transcriptText,
+        thumbnailUrl,
+        publishedAt,
+        timestamp: Date.now(),
+      })
+    } else {
+      // No transcript available or transcript is disabled, use description as fallback
+      transcriptText = `Title: ${videoTitle}\n\nDescription: ${description}\n\n(No transcript available for this video. Using video description as fallback.)`
+
+      // Cache the video data without transcript
+      cacheVideoData({
+        videoId,
+        title: videoTitle,
+        channelTitle,
+        description,
+        transcript: transcriptText,
+        thumbnailUrl,
+        publishedAt,
+        timestamp: Date.now(),
+      })
+    }
+
     return {
-      transcript: `Title: ${videoTitle}\n\nDescription: ${description}\n\n(This is a simulated transcript for demonstration purposes.)`,
+      transcript: transcriptText,
       title: videoTitle,
       channelTitle: channelTitle,
       url: originalUrl || `https://www.youtube.com/watch?v=${videoId}`,
+      fallback: !transcriptResponse || transcriptResponse.transcript.length === 0,
     }
   } catch (error) {
     console.error(`Error fetching data for video ${videoId}:`, error)
@@ -229,7 +274,13 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          const { transcript, title, channelTitle, url: videoUrl, fallback } = await fetchVideoData(videoId, url)
+          const {
+            transcript,
+            title,
+            channelTitle,
+            url: videoUrl,
+            fallback,
+          } = await fetchVideoData(videoId, url, language)
           const summary = await summarizeWithGemini(transcript, title, language, outputSettings)
 
           return {
