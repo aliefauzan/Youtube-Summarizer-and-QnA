@@ -24,32 +24,9 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Try to fetch transcript
+    // Fetch transcript from YouTube
     try {
-      // Correctly handle language parameter
-      let transcriptItems;
-      
-      if (language) {
-        // First try to get transcript in the specified language
-        try {
-          const transcript = await YoutubeTranscript.getTranscript(videoId);
-          const transcriptList = await YoutubeTranscript.listTranscripts(videoId);
-          const languageTranscript = transcriptList.find(t => t.languageCode === language);
-          
-          if (languageTranscript) {
-            transcriptItems = await languageTranscript.fetch();
-          } else {
-            // Fallback to default transcript
-            transcriptItems = transcript;
-          }
-        } catch (e) {
-          // Fallback to default method if the above fails
-          transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
-        }
-      } else {
-        // No language specified, use default
-        transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
-      }
+      const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, { lang: language })
 
       // Format the response
       const response = {
@@ -89,43 +66,17 @@ export async function GET(request: NextRequest) {
       })
     }
   } catch (error) {
-    console.error("Error in transcript API:", error);
-  
-  // Check for specific error types
-  if (error.message?.includes("quota")) {
+    console.error("Error in transcript API:", error)
     return NextResponse.json(
       {
-        error: "YouTube API quota exceeded",
-        details: "The daily quota for YouTube API requests has been reached. Please try again tomorrow.",
+        error: "Failed to fetch transcript",
+        details: error instanceof Error ? error.message : "Unknown error",
         transcript: [], // Return empty transcript array
         transcriptDisabled: true,
       },
       { status: 200 }, // Return 200 even on error to avoid breaking the UI
-    );
+    )
   }
-  
-  if (error.message?.includes("authenticate")) {
-    return NextResponse.json(
-      {
-        error: "Authentication error",
-        details: "The YouTube API key may be invalid or missing.",
-        transcript: [], // Return empty transcript array
-        transcriptDisabled: true,
-      },
-      { status: 200 }, // Return 200 even on error to avoid breaking the UI
-    );
-  }
-  
-  // Generic error response
-  return NextResponse.json(
-    {
-      error: "Failed to fetch transcript",
-      details: error instanceof Error ? error.message : "Unknown error",
-      transcript: [], // Return empty transcript array
-      transcriptDisabled: true,
-    },
-    { status: 200 }, // Return 200 even on error to avoid breaking the UI
-  );
 }
 
 // Helper function to parse transcript items from cached text

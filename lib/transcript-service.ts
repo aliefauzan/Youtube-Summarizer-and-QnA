@@ -113,5 +113,3 @@ export async function getAvailableTranscriptLanguages(videoId: string): Promise<
     return []
   }
 }
-// Remove any direct access to process.env in this client-side file
-// Instead, make API calls to server endpoints that can access environment variables

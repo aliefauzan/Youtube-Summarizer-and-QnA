@@ -1,5 +1,5 @@
 <div align="center">
-    <h1>YouTube Summarizer and QnA</h1>
+    <h1>YouTube Video Summarizer and QnA</h1>
     <img src="https://github.com/aliefauzan/Youtube-Summarizer-and-QnA/blob/main/Showcase.jpg?raw=true" alt="Screenshot" width="600px" />
   </div>
   <div align="center">
@@ -50,6 +50,21 @@ A comprehensive web application that allows users to generate summaries and answ
 - Predefined question templates for different analysis types
 - Support for blockchain and smart contract specific questions
 - Custom question creation
+
+## Recent Fixes and Improvements
+
+The application has been updated with the following fixes:
+
+- Fixed import paths to match the actual file structure
+- Improved YouTube Transcript API usage with proper language parameter handling
+- Added missing component imports
+- Moved environment variable access to server-side API routes
+- Implemented proper error handling for API failures
+- Standardized file structure for YouTube-related components
+- Added missing API route for video analysis
+- Added CORS support via middleware
+- Fixed client-side environment variable access issues
+- Improved transcript language selection
 
 ## Getting Started
 
@@ -166,8 +181,12 @@ youtube-summarizer/
 │   │   ├── analyze/
 │   │   │   └── route.ts
 │   │   └── youtube/
-│   │       └── video-info/
-│   │           └── route.ts
+│   │       ├── video-info/
+│   │       │   └── route.ts
+│   │       └── transcript/
+│   │           ├── route.ts
+│   │           └── languages/
+│   │               └── route.ts
 │   ├── layout.tsx
 │   └── page.tsx
 ├── components/
@@ -180,13 +199,17 @@ youtube-summarizer/
 │       ├── output-customization.tsx
 │       ├── language-selector.tsx
 │       ├── document-editor.tsx
+│       ├── transcript-info.tsx
 │       └── youtube-summarizer.tsx
 ├── lib/
 │   ├── youtube.ts
 │   ├── fallback-summarizer.ts
 │   ├── content-analyzer.ts
 │   ├── pdf-generator.ts
-│   └── docx-generator.ts
+│   ├── docx-generator.ts
+│   ├── transcript-service.ts
+│   └── cache-service.ts
+├── middleware.ts
 └── ... (config files)
 \`\`\`
 
